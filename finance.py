@@ -3,6 +3,8 @@ import pandas_datareader.data as web
 from datetime import datetime
 import math
 import csv
+from bs4 import BeautifulSoup as bs
+from urllib.request import Request, urlopen
 
 # green = 0, red = 1
 def run(color):
@@ -10,15 +12,36 @@ def run(color):
     title = ""
     if color == 0:
         title = "green"
+        req = Request('https://finviz.com/screener.ashx?v=110&s=ta_topgainers', headers={'User-Agent': 'Mozilla/5.0'})
+        webpage = urlopen(req).read()
+        soup = bs(webpage, 'lxml')
+        tick = soup.body.find_all('table', {'class': None})[5].find_all('td', {'class': 'screener-body-table-nw'})
+        tickers = []
+        for ticker in tick:
+            t = ticker.find('a', {'class': 'screener-link-primary'})
+            if t != None:
+                tickers.append(ticker.find('a', {'class': 'screener-link-primary'}).text)
     else:
         title = "red"
+        req = Request('https://finviz.com/screener.ashx?v=110&s=ta_toplosers', headers={'User-Agent': 'Mozilla/5.0'})
+        webpage = urlopen(req).read()
+        soup = bs(webpage, 'lxml')
+        tick = soup.body.find_all('table', {'class': None})[5].find_all('td', {'class': 'screener-body-table-nw'})
+        tickers = []
+        for ticker in tick:
+            t = ticker.find('a', {'class': 'screener-link-primary'})
+            if t != None:
+                tickers.append(ticker.find('a', {'class': 'screener-link-primary'}).text)
         
     column = ["Symbol"]
-
+    tickers.append('BTC-USD')
+    tickers.append('ETH-USD')
+    #tickers = ['AXSM']
     exchange = "nasdaq"
-    company_cap = "micro"
-
-    stock_tickers_df = pd.read_csv(exchange + "_screener_" + company_cap + "_cap.csv", usecols=column)
+    company_cap = "small"
+    print(tickers)
+    stock_tickers_df = pd.DataFrame(tickers, columns=column)
+    #stock_tickers_df = pd.read_csv(exchange + "_screener_" + company_cap + "_cap.csv", usecols=column)
     dictionary = {"Symbol":[],
                         "Date":[],
                         "Percent_Change":[],
@@ -33,13 +56,13 @@ def run(color):
                         "One_Day_Percent_Change":[],
                         "One_Week_Percent_Change":[],
                         "One_Month_Percent_Change":[]}
-    averages = {"Symbol":[], "Average_Initial_Change":[], "Average_One_Day":[], "Average_Week":[], "Average_Month":[], "Rows":[]}
+    averages = {"Symbol":[], "Historical_Initial_Change":[], "Historical_One_Day":[], "Historical_Week":[], "Historical_Month":[], "Rows":[]}
     column_names = ["Symbol", "Date", "Percent_Change", "Z_Score", "One_Day_Percent_Change", "One_Week_Percent_Change", "One_Month_Percent_Change"]
-    average_columns = ["Symbol", "Average_Initial_Change", "Average_One_Day", "Average_Week", "Average_Month", "Rows"]
+    average_columns = ["Symbol", "Historical_Initial_Change", "Historical_One_Day", "Historical_Week", "Historical_Month", "Rows"]
     average_csv = pd.DataFrame(averages)
     csv = pd.DataFrame(final_dict)
     tick_count = 1
-
+    print(stock_tickers_df)
     big_move_list = []
     honorable_mentions = []
     for j, r in stock_tickers_df.iterrows():
@@ -49,13 +72,15 @@ def run(color):
             try:
                 ticker = stock_tickers_df.iloc[j]['Symbol']
                 try:
-                    today_start = datetime(2021, 7, 22)
-                    today_end = datetime(2021, 7, 23)
+                    td = datetime.now()
+                    today_start = datetime(td.year, td.month, (td.day)-1)
+                    #today_start = datetime(td.year, td.month, 6)
+                    today_end = datetime(td.year, td.month, td.day)
                     today_df = web.DataReader(ticker, 'yahoo', today_start, today_end)
                     today_df = today_df.reset_index()
 
                     start = datetime(1970, 1, 1)
-                    end = datetime(2021, 7, 21)
+                    end = datetime(td.year, td.month, td.day)
                     df = web.DataReader(ticker, 'yahoo', start, end)
                     df = df.reset_index()
 
@@ -73,6 +98,7 @@ def run(color):
                         one_month_change = 0
                         print(ticker, " : ", tick_count)
                         tick_count += 1
+                        #print(today_df)
                         
                         for index, row in df.iterrows():
                             if index < len(df)-20:
@@ -178,10 +204,10 @@ def run(color):
 
                             averages["Symbol"] = []
                             averages["Symbol"].append(ticker)
-                            averages["Average_Initial_Change"].append(round((initial/len(final_dict["Percent_Change"])), 2))
-                            averages["Average_One_Day"].append(round((one_day/len(final_dict["One_Day_Percent_Change"])), 2))
-                            averages["Average_Week"].append(round((one_week/len(final_dict["One_Week_Percent_Change"])), 2))
-                            averages["Average_Month"].append(round((one_month/len(final_dict["One_Month_Percent_Change"])), 2))
+                            averages["Historical_Initial_Change"].append(round((initial/len(final_dict["Percent_Change"])), 2))
+                            averages["Historical_One_Day"].append(round((one_day/len(final_dict["One_Day_Percent_Change"])), 2))
+                            averages["Historical_Week"].append(round((one_week/len(final_dict["One_Week_Percent_Change"])), 2))
+                            averages["Historical_Month"].append(round((one_month/len(final_dict["One_Month_Percent_Change"])), 2))
                             averages["Rows"].append(len(final_dict["Percent_Change"]))
                             dictionary = {"Symbol":[],
                                 "Date":[],
@@ -199,7 +225,7 @@ def run(color):
 
                             new_avg_df = pd.DataFrame(averages)
 
-                            averages = {"Symbol":[], "Average_Initial_Change":[], "Average_One_Day":[], "Average_Week":[], "Average_Month":[], "Rows":[]}
+                            averages = {"Symbol":[], "Historical_Initial_Change":[], "Historical_One_Day":[], "Historical_Week":[], "Historical_Month":[], "Rows":[]}
 
                             average_csv = average_csv.append(new_avg_df)
                             csv = csv.append(new_df)
@@ -213,8 +239,8 @@ def run(color):
                                 "One_Month_Percent_Change":[]}
                             today_percent_change = round((((today_df.iloc[1]['Close'] - today_df.iloc[0]['Close']) / today_df.iloc[0]['Close']) * 100), 2)
                             solo_z = (today_percent_change - average) / standard_deviation
-##                            print(str(today_percent_change)+'%')
-##                            print(solo_z)
+    ##                            print(str(today_percent_change)+'%')
+    ##                            print(solo_z)
                             if color == 0:
                                 if today_percent_change > 0:
                                     if solo_z >= 3 or solo_z <= -3:
